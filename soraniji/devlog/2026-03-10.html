@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>2026-03-10 開発記 | SoraNiji</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; }
+    .sky-gradient { background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%); }
+    .card-glass {
+      background: rgba(255,255,255,0.07);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .rainbow-text {
+      background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #c77dff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .prose h2 { font-size: 1.4rem; font-weight: 700; margin: 2rem 0 0.8rem; border-left: 4px solid #6C8EF5; padding-left: 0.75rem; }
+    .prose h3 { font-size: 1.1rem; font-weight: 700; margin: 1.5rem 0 0.5rem; color: #93c5fd; }
+    .prose p { line-height: 1.85; margin-bottom: 1rem; color: #bfdbfe; }
+    .prose ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+    .prose ul li { line-height: 1.8; color: #bfdbfe; }
+    .prose code { background: rgba(255,255,255,0.1); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.88em; font-family: 'SF Mono', monospace; }
+    .prose pre { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; overflow-x: auto; margin: 1rem 0 1.5rem; }
+    .prose pre code { background: none; padding: 0; font-size: 0.85em; color: #e2e8f0; }
+    .badge { display: inline-block; font-size: 0.75rem; background: rgba(108, 142, 245, 0.3); border: 1px solid rgba(108, 142, 245, 0.5); padding: 0.15rem 0.6rem; border-radius: 9999px; margin: 0.15rem; }
+  </style>
+</head>
+<body class="sky-gradient min-h-screen text-white">
+
+  <header class="px-6 py-6 border-b border-white/10">
+    <div class="max-w-3xl mx-auto flex items-center justify-between">
+      <a href="../../" class="flex items-center gap-2 hover:opacity-80 transition">
+        <span class="text-2xl">🌈</span>
+        <span class="font-bold text-lg"><span class="rainbow-text">SoraNiji</span></span>
+      </a>
+      <nav class="text-sm text-blue-300">
+        <a href="../" class="hover:text-white transition">← 記事一覧</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-12">
+
+    <!-- Header -->
+    <p class="text-blue-400 text-sm mb-2">2026-03-10（火）</p>
+    <h1 class="text-3xl md:text-4xl font-black mb-4 leading-tight">
+      Firebase 本番デプロイ・PhotoType フィルタ・<br class="hidden md:block">タイムゾーンバグ修正
+    </h1>
+    <div class="flex flex-wrap gap-1 mb-8">
+      <span class="badge">Firebase</span>
+      <span class="badge">React Native</span>
+      <span class="badge">TanStack Query</span>
+      <span class="badge">TypeScript</span>
+      <span class="badge">Expo Router</span>
+      <span class="badge">Cloud Functions</span>
+    </div>
+    <p class="text-blue-200 text-base leading-relaxed mb-10 border-l-4 border-purple-500 pl-4">
+      Phase 6 最終調整の山場。Firebase Functions が 369MB に膨らんでデプロイ不能になったり、JST の深夜0時を過ぎても「本日の上限」が解除されないバグが発覚したりと、本番環境ならではのトラブルが続出した一日。
+    </p>
+
+    <div class="prose">
+
+      <!-- 1 -->
+      <h2>1. Firebase Functions パッケージ肥大化（369MB → 解消）</h2>
+      <p>
+        <code>firebase deploy --only functions</code> を実行したところ、<strong>EntityTooLarge</strong> エラーで弾かれた。
+        Cloud Functions のアップロード上限は 100MB 未満。それが 369MB を超えていた。
+      </p>
+      <h3>原因1: backend の package.json に expo・react が混入</h3>
+      <p>
+        <code>Dev/backend/package.json</code> に <code>expo</code>、<code>react</code>、<code>react-native</code> が依存として記載されていた。
+        これらは Node.js の Cloud Functions には不要だが、<code>npm install</code> で全部展開されていた。
+        依存から除去することで数十 MB 削減。
+      </p>
+      <h3>原因2: CocoaPods のシンボリックリンクが混入</h3>
+      <p>
+        開発中に誤って <code>Dev/backend/ios/</code> が作成されており、iOS ビルド時の CocoaPods ファイル（<code>Pods/</code>）まで含まれていた。
+        <code>rm -rf Dev/backend/ios Dev/backend/android</code> で削除。
+      </p>
+      <h3>原因3: .firebaseignore が効いていなかった</h3>
+      <p>
+        <code>.gitignore</code> に <code>node_modules/</code> がなく、Firebase の ignore 設定も不完全だった。
+        <code>.gitignore</code> に追加 + <code>.firebaseignore</code> 新規作成 + <code>firebase.json</code> の ignore フィールドを整備して解消。
+      </p>
+      <pre><code># .firebaseignore
+node_modules/
+src/
+.git/
+*.log</code></pre>
+      <p>この3つを同時に修正してようやく <strong>Deploy complete!</strong> が出た。</p>
+
+      <!-- 2 -->
+      <h2>2. JST/UTC タイムゾーンバグ — 深夜0時に上限が解除されない</h2>
+      <p>
+        日付変更線を超えた AM 0:00 JST でも「本日の投稿上限に達しました」が表示され続ける不具合。
+      </p>
+      <h3>根本原因</h3>
+      <p>
+        <code>new Date().toISOString().slice(0, 10)</code> は <strong>UTC</strong> の日付を返す。
+        JST は UTC+9 なので、JST の 0:00〜8:59 はまだ UTC の前日扱いになり、
+        Firestore に保存された <code>daily_post_date</code>（UTC日付）と一致しなくなる。
+      </p>
+      <h3>解決策: date.ts を新設してすべての日付処理を集約</h3>
+      <pre><code>// src/utils/date.ts
+export function localDateString(date: Date = new Date()): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}</code></pre>
+      <p>
+        <code>getFullYear()</code>/<code>getMonth()</code>/<code>getDate()</code> はデバイスのローカルタイムゾーンで動作するため、
+        JST 環境では JST 日付が返る。<code>toISOString()</code> の使用をコードベース全体で禁止し、
+        日付が関係する処理は必ず <code>date.ts</code> の関数を使うルールを CLAUDE.md に明記した。
+      </p>
+
+      <!-- 3 -->
+      <h2>3. EXIF 日付の Hermes エンジン非互換バグ</h2>
+      <p>
+        カメラ撮影時の EXIF <code>DateTimeOriginal</code> は <code>"2026:03:10 14:32:00"</code> 形式。
+        Chrome/Safari の JS エンジンでは <code>new Date("2026:03:10 14:32:00")</code> がなんとなく動くが、
+        Expo（React Native）が使う <strong>Hermes JS エンジンでは Invalid Date</strong> になる。
+      </p>
+      <pre><code>// src/utils/date.ts
+export function parseExifDate(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const m = raw.match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return undefined;
+  const [, year, month, day, hour, min, sec] = m;
+  const d = new Date(`${year}-${month}-${day}T${hour}:${min}:${sec}`);
+  return isNaN(d.getTime()) ? undefined : d.toISOString();
+}</code></pre>
+      <p>ISO 8601 形式（ハイフン区切り）に変換してから <code>new Date()</code> に渡すことで Hermes でも正常動作する。</p>
+
+      <!-- 4 -->
+      <h2>4. useMinuteTick — FlatList の setInterval 乱立を解消</h2>
+      <p>
+        <code>PostCard</code> は FlatList で大量に表示される。以前の実装は各カードが独立した 60 秒 <code>setInterval</code> を持っていたため、
+        カードが 20 枚あれば 20 本のタイマーが動いていた。
+      </p>
+      <h3>解決: モジュールレベルの singleton interval</h3>
+      <pre><code>// src/hooks/useMinuteTick.ts
+const listeners = new Set&lt;() => void&gt;();
+let intervalId: ReturnType&lt;typeof setInterval&gt; | null = null;
+
+export function useMinuteTick(): void {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const notify = () => setTick((t) => t + 1);
+    listeners.add(notify);
+    if (intervalId === null) {
+      intervalId = setInterval(() => listeners.forEach((fn) => fn()), 60_000);
+    }
+    return () => {
+      listeners.delete(notify);
+      if (listeners.size === 0) { clearInterval(intervalId!); intervalId = null; }
+    };
+  }, []);
+}</code></pre>
+      <p>
+        カードが何枚あっても <code>setInterval</code> は常に1本。
+        全カードがアンマウントされたらタイマーも止まる。Firestore への通信は一切発生しない。
+      </p>
+
+      <!-- 5 -->
+      <h2>5. PhotoType フィルタ機能実装</h2>
+      <p>
+        虹だけでなく <strong>☁️ 雲・🌅 朝日・🌇 夕陽・⚡ 雷</strong> も投稿できるように。
+        タイムライン画面には横スクロールのフィルタチップバーを追加。
+      </p>
+      <h3>実装のポイント</h3>
+      <ul>
+        <li>Firestore クエリに <code>where('photo_type', '==', photoType)</code> を条件追加</li>
+        <li>フィルタ変更 = 別クエリなので TanStack Query の cache key を <code>`Timeline:${activeFilter}`</code> に変更</li>
+        <li><code>useCallback</code> で <code>fetchWithFilter</code> をメモ化し、<code>activeFilter</code> が変わった時だけ再生成</li>
+        <li>Firestore の複合インデックス（<code>status + photo_type + posted_at</code>）を <code>firestore.indexes.json</code> に追加してデプロイ</li>
+      </ul>
+      <pre><code>// app/(tabs)/index.tsx（抜粋）
+const fetchWithFilter = useCallback(
+  (cursor?: QueryDocumentSnapshot, uuid?: string) =>
+    fetchTimeline(cursor, uuid, activeFilter ?? undefined),
+  [activeFilter],
+);
+const { posts, ... } = usePaginatedPosts(fetchWithFilter, {
+  tag: `Timeline:${activeFilter ?? 'all'}`,
+});</code></pre>
+
+      <!-- 6 -->
+      <h2>6. 方角表示・国際化逆ジオコーディング</h2>
+      <p>
+        PostCard に撮影方角（北・南東など）を表示。
+        <code>direction_cardinal</code> が未記録の場合は <code>direction_degrees</code> から <code>degreesToCardinal()</code> で推算する。
+      </p>
+      <p>
+        また Nominatim の逆ジオコーディング結果が海外だった場合は <code>"Tokyo, Japan"</code> のように
+        <code>{locality}, {country}</code> 形式で表示するよう <code>onPostProcess.ts</code> を更新。
+      </p>
+
+      <!-- 7 -->
+      <h2>7. 本日の教訓まとめ</h2>
+      <ul>
+        <li><code>toISOString()</code> は UTC を返す。日付には必ずデバイスローカルの関数を使う</li>
+        <li>EXIF 日付は Hermes で Invalid Date になる。正規表現で ISO 形式に変換してから渡す</li>
+        <li>FlatList 内の副作用は singleton パターンで集約する（タイマー、イベントリスナー等）</li>
+        <li>Firebase Functions のデプロイ前に <code>node_modules</code> サイズを必ず確認する</li>
+        <li><code>setDoc(merge: true)</code> は指定フィールドを上書きする。カウンタの所有権は1か所に集約する</li>
+      </ul>
+
+    </div>
+
+    <!-- Back link -->
+    <div class="mt-12 pt-8 border-t border-white/10 flex justify-between items-center">
+      <a href="../" class="text-blue-300 hover:text-white transition text-sm">← 記事一覧に戻る</a>
+      <a href="../../" class="text-blue-300 hover:text-white transition text-sm">SoraNiji トップ →</a>
+    </div>
+
+  </main>
+
+  <footer class="text-center py-10 text-blue-400 text-sm border-t border-white/10 mt-8">
+    <p>SoraNiji 開発ブログ — © 2026 AppDebris Studio</p>
+  </footer>
+
+</body>
+</html>
