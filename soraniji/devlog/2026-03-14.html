@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>2026-03-14 開発記 | SoraNiji</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; }
+    .sky-gradient { background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%); }
+    .card-glass {
+      background: rgba(255,255,255,0.07);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .rainbow-text {
+      background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #c77dff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .prose h2 { font-size: 1.4rem; font-weight: 700; margin: 2rem 0 0.8rem; border-left: 4px solid #6C8EF5; padding-left: 0.75rem; }
+    .prose h3 { font-size: 1.1rem; font-weight: 700; margin: 1.5rem 0 0.5rem; color: #93c5fd; }
+    .prose p { line-height: 1.85; margin-bottom: 1rem; color: #bfdbfe; }
+    .prose ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+    .prose ul li { line-height: 1.8; color: #bfdbfe; }
+    .prose table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size: 0.9em; }
+    .prose th { background: rgba(108,142,245,0.2); padding: 0.5rem 0.75rem; text-align: left; border: 1px solid rgba(255,255,255,0.1); font-weight: 700; }
+    .prose td { padding: 0.5rem 0.75rem; border: 1px solid rgba(255,255,255,0.08); color: #bfdbfe; }
+    .prose code { background: rgba(255,255,255,0.1); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.88em; font-family: 'SF Mono', monospace; }
+    .prose pre { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; overflow-x: auto; margin: 1rem 0 1.5rem; }
+    .prose pre code { background: none; padding: 0; font-size: 0.85em; color: #e2e8f0; }
+    .badge { display: inline-block; font-size: 0.75rem; background: rgba(108, 142, 245, 0.3); border: 1px solid rgba(108, 142, 245, 0.5); padding: 0.15rem 0.6rem; border-radius: 9999px; margin: 0.15rem; }
+    .warn-block { background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.4); border-radius: 10px; padding: 0.75rem 1rem; margin: 1rem 0; color: #fde68a; font-size: 0.9em; }
+  </style>
+</head>
+<body class="sky-gradient min-h-screen text-white">
+
+  <header class="px-6 py-6 border-b border-white/10">
+    <div class="max-w-3xl mx-auto flex items-center justify-between">
+      <a href="../../" class="flex items-center gap-2 hover:opacity-80 transition">
+        <span class="text-2xl">🌈</span>
+        <span class="font-bold text-lg"><span class="rainbow-text">SoraNiji</span></span>
+      </a>
+      <nav class="text-sm text-blue-300">
+        <a href="../" class="hover:text-white transition">← 記事一覧</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-12">
+
+    <!-- Header -->
+    <p class="text-blue-400 text-sm mb-2">2026-03-14（土）</p>
+    <h1 class="text-3xl md:text-4xl font-black mb-4 leading-tight">
+      iOS Capability 設定の修正と<br class="hidden md:block">位置情報プライバシーの強化
+    </h1>
+    <div class="flex flex-wrap gap-1 mb-8">
+      <span class="badge">Expo Config Plugin</span>
+      <span class="badge">iOS</span>
+      <span class="badge">EAS Build</span>
+      <span class="badge">Firebase App Check</span>
+      <span class="badge">プライバシー</span>
+    </div>
+    <p class="text-blue-200 text-base leading-relaxed mb-10 border-l-4 border-purple-500 pl-4">
+      App Store 提出を前に見落としていた重大バグを2件修正した日。<code>aps-environment</code> が
+      <code>development</code> にハードコードされたまま本番ビルドを出すと、プッシュ通知が完全に機能しない。
+      また、生 GPS 座標を Firestore に保存することへのプライバシーリスクを指摘し、
+      クライアント側で 111m 単位に丸める対策を入れた。
+    </p>
+
+    <div class="prose">
+
+      <!-- 1 -->
+      <h2>1. iOS Capability 設定の監査</h2>
+      <p>
+        今日は Capability 設定（entitlements・app.json・eas.json）を一通り確認した。
+        Gemini と Codex に並列で分析を依頼したところ、以下の問題が見つかった。
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>項目</th><th>重大度</th><th>現状</th><th>対応</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>aps-environment</code></td><td>🔴 CRITICAL</td><td><code>development</code> 固定</td><td>Config Plugin で動的設定</td></tr>
+          <tr><td><code>appattest-environment</code></td><td>🟠 HIGH</td><td>entitlements に欠落</td><td>production 限定で追加</td></tr>
+          <tr><td><code>UIBackgroundModes</code></td><td>🟡 MEDIUM</td><td>プラグイン任せ</td><td>確認済み（自動注入）</td></tr>
+          <tr><td><code>NSMicrophoneUsageDescription</code></td><td>🟢 LOW</td><td>欠落</td><td>Phase 7 動画対応前に追加</td></tr>
+        </tbody>
+      </table>
+
+      <div class="warn-block">
+        ⚠️ <strong>最重要:</strong> <code>aps-environment=development</code> のまま App Store 提出すると、
+        FCM プッシュ通知が本番で完全サイレント失敗する。Geohash ベース通知（コア機能）が無効になる。
+      </div>
+
+      <!-- 2 -->
+      <h2>2. Expo managed workflow と $(APS_ENV) 変数問題</h2>
+      <p>
+        最初に考えた対策は、Xcode のビルド変数 <code>$(APS_ENV)</code> を entitlements に書く方法だった。
+        ところが <strong>Expo managed workflow ではこれが機能しない</strong>。
+      </p>
+      <p>
+        理由は <code>npx expo prebuild</code> を実行するたびに entitlements ファイルが再生成されるため、
+        Xcode のビルド変数は prebuild 時点では評価されないからだ。
+        さらに <code>expo-notifications</code> プラグインが既存の <code>aps-environment</code> を検知して
+        上書きをスキップする挙動も確認した（<code>if (!config.modResults['aps-environment'])</code> の条件分岐）。
+      </p>
+      <p>
+        <strong>結論: Config Plugin 方式が唯一の永続的解決策。</strong>
+      </p>
+
+      <!-- 3 -->
+      <h2>3. withApsEnvironment.js の実装</h2>
+      <p>
+        EAS Build が自動設定する <code>EAS_BUILD_PROFILE</code> 環境変数を読み取り、
+        entitlements を動的に生成する Config Plugin を新規作成した。
+      </p>
+      <pre><code>// plugins/withApsEnvironment.js
+const { withEntitlementsPlist } = require('@expo/config-plugins');
+
+const withApsEnvironment = (config) => {
+  return withEntitlementsPlist(config, (config) => {
+    const profile = process.env.EAS_BUILD_PROFILE || 'development';
+    const apsEnv = profile === 'production' ? 'production' : 'development';
+
+    config.modResults['aps-environment'] = apsEnv;
+
+    // appattest-environment は production のみ設定
+    // （ローカル開発用 Provisioning Profile に capability 不要）
+    if (profile === 'production') {
+      config.modResults['com.apple.developer.devicecheck.appattest-environment'] = 'production';
+    }
+    return config;
+  });
+};
+
+module.exports = withApsEnvironment;</code></pre>
+      <p>
+        <code>app.json</code> の <code>plugins</code> 配列の<strong>末尾</strong>に追加した。
+        <code>expo-notifications</code> の後に実行することで、プラグインが設定した値を確実に上書きできる。
+        <code>eas.json</code> への追記は不要——EAS が <code>EAS_BUILD_PROFILE</code> を自動設定してくれる。
+      </p>
+
+      <h3>検証結果</h3>
+      <pre><code>$ EAS_BUILD_PROFILE=production npx expo prebuild --clean --platform ios
+$ cat ios/SoraNiji/SoraNiji.entitlements</code></pre>
+      <pre><code>&lt;key&gt;aps-environment&lt;/key&gt;
+&lt;string&gt;production&lt;/string&gt;
+&lt;key&gt;com.apple.developer.devicecheck.appattest-environment&lt;/key&gt;
+&lt;string&gt;production&lt;/string&gt;</code></pre>
+      <p>production で正しく生成されることを確認した ✅</p>
+
+      <!-- 4 -->
+      <h2>4. 位置情報プライバシーの強化</h2>
+      <p>
+        投稿フロー（<code>app/post/input.tsx</code>）から <code>src/api/posts.ts</code> を経由して
+        Firestore の <code>posts/{id}/internal/location</code> に保存される <code>lat_raw</code>/<code>lng_raw</code> を確認した。
+      </p>
+      <p>
+        これまでは生 GPS 座標（精度 &lt; 10m）をそのまま保存していた。
+        Firestore の Security Rules でクライアントからのアクセスは遮断しており、
+        Cloud Functions（Admin SDK）のみが読み取れる設計だが、
+        <strong>高精度データを保持すること自体がリスク</strong>との判断で丸め処理を追加した。
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>フィールド</th><th>丸め単位</th><th>精度</th><th>用途</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>lat_raw</code>（修正後）</td><td>0.001°</td><td>≈ 111m</td><td>internal のみ・通知計算用</td></tr>
+          <tr><td><code>lat_fuzzy</code></td><td>0.05°</td><td>≈ 5.5km</td><td>公開ドキュメント・地図表示用</td></tr>
+        </tbody>
+      </table>
+
+      <pre><code>// src/api/posts.ts — internal/location 書き込み前
+const round1m = (v: number) => Math.round(v * 1000) / 1000;
+tx.set(db.collection('posts').doc(postId).collection('internal').doc('location'), {
+  lat_raw: round1m(req.lat_raw),
+  lng_raw: round1m(req.lng_raw),
+  created_at: firestore.FieldValue.serverTimestamp(),
+});</code></pre>
+
+      <p>
+        通知半径の最小値は数 km 単位なので、111m の誤差は実用上問題ない。
+        仕様書（<code>01_data_models.md</code> v0.6、<code>05_non_functional.md</code> v0.2）にも丸めポリシーを明記した。
+      </p>
+
+      <!-- 5 -->
+      <h2>5. 本日の教訓まとめ</h2>
+      <ul>
+        <li><code>$(APS_ENV)</code> 変数は Expo managed workflow では使えない。Config Plugin 一択</li>
+        <li><code>expo-notifications</code> プラグインは既存値を上書きしない——必ず<strong>末尾</strong>に自前プラグインを置く</li>
+        <li>EAS Build は <code>EAS_BUILD_PROFILE</code> を自動設定する。<code>eas.json</code> への手動追記は不要</li>
+        <li><code>appattest-environment</code> をローカル開発用に追加すると Provisioning Profile 不一致でクラッシュする</li>
+        <li>Security Rules で遮断済みでも、高精度データを保持しないことがプライバシーの原則</li>
+        <li>位置情報の丸め精度は「通知半径の最小値に対して誤差が小さいか」で決める</li>
+      </ul>
+
+    </div>
+
+    <!-- Prev / Next -->
+    <div class="mt-12 pt-8 border-t border-white/10 flex justify-between items-center">
+      <a href="2026-03-10.html" class="text-blue-300 hover:text-white transition text-sm">← 2026-03-10</a>
+      <a href="../" class="text-blue-300 hover:text-white transition text-sm">記事一覧 →</a>
+    </div>
+
+  </main>
+
+  <footer class="text-center py-10 text-blue-400 text-sm border-t border-white/10 mt-8">
+    <p>SoraNiji 開発ブログ — © 2026 AppDebris Studio</p>
+  </footer>
+
+</body>
+</html>
