@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>2026-03-19 開発記 | SoraNiji</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; }
+    .sky-gradient { background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%); }
+    .card-glass {
+      background: rgba(255,255,255,0.07);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .rainbow-text {
+      background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #c77dff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .prose h2 { font-size: 1.4rem; font-weight: 700; margin: 2rem 0 0.8rem; border-left: 4px solid #6C8EF5; padding-left: 0.75rem; }
+    .prose h3 { font-size: 1.1rem; font-weight: 700; margin: 1.5rem 0 0.5rem; color: #93c5fd; }
+    .prose p { line-height: 1.85; margin-bottom: 1rem; color: #bfdbfe; }
+    .prose ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+    .prose ul li { line-height: 1.8; color: #bfdbfe; }
+    .prose table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size: 0.9em; }
+    .prose th { background: rgba(108,142,245,0.2); padding: 0.5rem 0.75rem; text-align: left; border: 1px solid rgba(255,255,255,0.1); font-weight: 700; }
+    .prose td { padding: 0.5rem 0.75rem; border: 1px solid rgba(255,255,255,0.08); color: #bfdbfe; }
+    .prose code { background: rgba(255,255,255,0.1); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.88em; font-family: 'SF Mono', monospace; }
+    .prose pre { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; overflow-x: auto; margin: 1rem 0 1.5rem; }
+    .prose pre code { background: none; padding: 0; font-size: 0.85em; color: #e2e8f0; }
+    .badge { display: inline-block; font-size: 0.75rem; background: rgba(108, 142, 245, 0.3); border: 1px solid rgba(108, 142, 245, 0.5); padding: 0.15rem 0.6rem; border-radius: 9999px; margin: 0.15rem; }
+    .warn-block { background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.4); border-radius: 10px; padding: 0.75rem 1rem; margin: 1rem 0; color: #fde68a; font-size: 0.9em; }
+    .success-block { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.4); border-radius: 10px; padding: 0.75rem 1rem; margin: 1rem 0; color: #bbf7d0; font-size: 0.9em; }
+  </style>
+</head>
+<body class="sky-gradient min-h-screen text-white">
+
+  <header class="px-6 py-6 border-b border-white/10">
+    <div class="max-w-3xl mx-auto flex items-center justify-between">
+      <a href="../../" class="flex items-center gap-2 hover:opacity-80 transition">
+        <span class="text-2xl">🌈</span>
+        <span class="font-bold text-lg"><span class="rainbow-text">SoraNiji</span></span>
+      </a>
+      <nav class="text-sm text-blue-300">
+        <a href="../" class="hover:text-white transition">← 記事一覧</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-12">
+
+    <!-- Header -->
+    <p class="text-blue-400 text-sm mb-2">2026-03-19（木）</p>
+    <h1 class="text-3xl md:text-4xl font-black mb-4 leading-tight">
+      Firebase セキュリティ・パフォーマンス大型修正<br class="hidden md:block">P0〜P2 全 9 項目完了
+    </h1>
+    <div class="flex flex-wrap gap-1 mb-8">
+      <span class="badge">Firebase</span>
+      <span class="badge">Cloud Functions</span>
+      <span class="badge">Security Rules</span>
+      <span class="badge">iOS</span>
+      <span class="badge">パフォーマンス</span>
+      <span class="badge">セキュリティ</span>
+    </div>
+    <p class="text-blue-200 text-base leading-relaxed mb-10 border-l-4 border-purple-500 pl-4">
+      Firebase 認証・Security Rules・Cloud Functions 層にわたる9つの脆弱性・パフォーマンス問題を
+      一気に修正した日。帳簿アプリの脆弱性診断で得た知見を SoraNiji に応用し、
+      セキュリティレビューで特定した CRITICAL/HIGH 課題を全て解決。
+      特に batch overflow と account takeover リスク の修正が重要。
+    </p>
+
+    <div class="prose">
+
+      <!-- 1 -->
+      <h2>1. Firebase 認証の孤児化問題（P0 #1）</h2>
+      <p>
+        SoraNiji は<strong>匿名UUID方式</strong>を採用している——Firebase Auth の anonymous UID は
+        <code>Keychain の UUID</code> とは別の識別子で、アプリ再インストール時に UID が変わる。
+        すると Firestore の <code>auth_uid</code> フィールドが古い UID に紐づいたまま残り、
+        以降のすべての操作でセキュリティ検証失敗で投稿・いいねが機能しなくなる。
+      </p>
+      <p>
+        これが「auth_uid 孤児化」の問題だ。
+      </p>
+
+      <h3>問題の危険性</h3>
+      <ul>
+        <li><strong>アプリ再インストール後、ユーザーが投稿・いいねできない</strong>（サイレント失敗）</li>
+        <li>旧 auth_uid が Firestore に無限に残る（dead data 蓄積）</li>
+        <li>Firebase Auth の無効化上限に引っかかる（個人アカウントで数百件の limit）</li>
+      </ul>
+
+      <h3>Cloud Function: relinkAuthUid</h3>
+      <p>
+        新規 Cloud Function <code>relinkAuthUid</code> を実装。iOS から呼び出して
+        auth_uid を新しい値に一括更新する。
+      </p>
+
+      <pre><code>// Dev/backend/src/relinkAuthUid.ts の主要ロジック
+export const relinkAuthUid = functions
+  .https.onCall(async (data, context) => {
+    // ✅ App Check + Auth 検証
+    if (context.app == undefined) throw new HttpsError('failed-precondition', '...');
+    if (!context.auth) throw new HttpsError('unauthenticated', '...');
+
+    // ✅ UUID 形式検証（RFC 4122）
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!userUuid || !UUID_REGEX.test(userUuid)) {
+      throw new HttpsError('invalid-argument', 'user_uuid must be a valid UUID');
+    }
+
+    // ✅ アカウント乗っ取り防止
+    // 呼び出し者の auth_uid が既に別ユーザーに紐づいている場合は拒否
+    const callerExisting = await db
+      .collection('users')
+      .where('auth_uid', '==', newAuthUid)
+      .limit(1)
+      .get();
+    if (!callerExisting.empty) {
+      throw new HttpsError('permission-denied', 'Caller auth_uid already linked');
+    }
+
+    // ✅ Batch 処理（450 件ごとに分割）
+    let batch = db.batch();
+    let opCount = 0;
+
+    batch.update(userRef, { auth_uid: newAuthUid });
+    opCount++;
+
+    const postsSnap = await db
+      .collection('posts')
+      .where('user_uuid', '==', userUuid)
+      .get();
+
+    for (const postDoc of postsSnap.docs) {
+      batch.update(postDoc.ref, { auth_uid: newAuthUid });
+      opCount++;
+      if (opCount >= 450) {
+        await batch.commit();
+        batch = db.batch();
+        opCount = 0;
+      }
+    }
+    if (opCount > 0) await batch.commit();
+
+    // ✅ Auth user 削除（Firestore 更新が成功した後に実行）
+    if (shouldDeleteOldAuth && currentAuthUid) {
+      try {
+        await admin.auth().deleteUser(currentAuthUid);
+      } catch {
+        // 削除失敗は非致命的
+      }
+    }
+  });</code></pre>
+
+      <h3>iOS 側の呼び出し（UserRepository）</h3>
+      <p>
+        <code>registerUser</code> で auth_uid 不一致を検知したら、
+        Cloud Function に委譲する。
+      </p>
+      <pre><code>if let existingAuthUid = userData.auth_uid, existingAuthUid != currentAuthUid {
+  let response = try await FirebaseManager.shared.functions
+    .httpsCallable("relinkAuthUid")
+    .call(["user_uuid": uuid])
+  return // auth_uid 再リンク完了
+}</code></pre>
+
+      <div class="warn-block">
+        🔐 <strong>重要な設計判断 3 つ：</strong>
+        <ol style="list-style: decimal; padding-left: 1.5rem; margin-top: 0.5rem;">
+          <li><strong>Batch overflow 防止</strong>: Firebase の 500 項目制限を避けるため 450 で分割。Auth user 削除を commit 後に実行し、データ不一致を防止</li>
+          <li><strong>Account takeover 検証</strong>: 呼び出し者の auth_uid が別ユーザーに既に紐づいていないか確認（既知の乗っ取り手法を対策）</li>
+          <li><strong>Anonymous-only check</strong>: 旧 auth_uid のユーザーが匿名のみか検証。非匿名ユーザーの削除は拒否</li>
+        </ol>
+      </div>
+
+      <!-- 2 -->
+      <h2>2. Firestore Rules 強化（P0 #2–3）</h2>
+
+      <h3>2-1. like_count >= 0 ガード</h3>
+      <p>
+        いいね数が負数になる可能性があった。トランザクション内で race condition が起きると、
+        <code>increment(-1)</code> が複数回実行されて -1, -2, ... になる。
+      </p>
+      <pre><code>// firestore.rules
+match /posts/{postId} {
+  allow update: if
+    request.auth.uid == resource.data.auth_uid &&
+    request.resource.data.like_count >= 0;  // ← 追加
+}</code></pre>
+
+      <h3>2-2. internal subcollection 所有権検証</h3>
+      <p>
+        <code>posts/{id}/internal/location</code> に誰でもアクセスできてしまう脆弱性があった。
+      </p>
+      <pre><code>// firestore.rules
+match /posts/{postId}/internal/location {
+  allow create: if
+    // 投稿が存在し、呼び出し者の auth_uid と一致
+    exists(/databases/$(database)/documents/posts/$(postId)) &&
+    get(/databases/$(database)/documents/posts/$(postId)).data.auth_uid == request.auth.uid;
+}</code></pre>
+
+      <!-- 3 -->
+      <h2>3. Storage Rules 強化（P0 #3）</h2>
+      <p>
+        認証なしでアップロード可能だった問題を修正。
+        さらに SVG インジェクション対策として、MIME type を制限。
+      </p>
+
+      <pre><code>// storage.rules
+match /{allPaths=**} {
+  allow read: if true;
+  allow write: if
+    request.auth != null &&
+    request.resource.contentType.matches('image/(jpeg|png|heic|heif|webp)') &&
+    request.resource.size < 5 * 1024 * 1024;  // 5MB
+}</code></pre>
+
+      <!-- 4 -->
+      <h2>4. iOS deletePost → Cloud Function 経由（P0 #4）</h2>
+      <p>
+        クライアント側からの Firestore <code>updateData()</code> 直接呼び出しをやめ、
+        Cloud Function 経由に変更。サーバー側で Storage 削除と likes クリーンアップを
+        一括処理する。
+      </p>
+
+      <pre><code>// SoraNijiIOS/PostRepository.swift
+func deletePost(postId: String) async throws {
+  let _ = try await FirebaseManager.shared.functions
+    .httpsCallable("deletePost")
+    .call(["postId": postId])
+}</code></pre>
+
+      <div class="success-block">
+        ✅ これにより Security Rules で deletePost を forbidden にできる
+        （管理者の削除はサーバー側のみに限定）
+      </div>
+
+      <!-- 5 -->
+      <h2>5. N+1 クエリ修正（P1 #1）</h2>
+      <p>
+        タイムラインで「いいねしたか判定」をするために、
+        投稿ごとに <code>likes/{postId}_{uuid}</code> を 1 件ずつ fetch していた。
+        20 件の投稿なら 20 回の Firestore 読み取り。
+      </p>
+
+      <h3>修正前（N+1 パターン）</h3>
+      <pre><code>// 概念図（実際はより複雑）
+for post in posts {  // N 回のループ
+  let liked = db.collection("likes")
+    .document("\(post.id)_\(uuid)")
+    .get()  // N 回の読み取り
+}</code></pre>
+
+      <h3>修正後（whereField(in:) バッチ）</h3>
+      <pre><code>// LikeRepository.swift
+let likeIds = posts.map { "\($0.id)_\(uuid)" }
+var likedSet = Set<String>()
+
+// Firestore の "in" クエリは最大 30 件制限のため分割
+for chunk in stride(from: 0, to: likeIds.count, by: 30) {
+  let batch = Array(likeIds[chunk..<min(chunk + 30, likeIds.count)])
+  let snap = try await db.collection("likes")
+    .whereField(FieldPath.documentID(), in: batch)
+    .getDocuments()
+  for doc in snap.documents {
+    likedSet.insert(doc.documentID)
+  }
+}</code></pre>
+
+      <p>
+        <strong>削減効果：</strong>
+        20 件投稿 → 1 回の読み取り（`ceil(20/30) = 1` クエリ）
+      </p>
+
+      <!-- 6 -->
+      <h2>6. FCM 冪等性（P1 #2）</h2>
+      <p>
+        Cloud Functions の at-least-once 配信特性により、
+        同じイベント ID で <code>onPostCreate</code> が複数回実行される可能性がある。
+        結果、同じユーザーへ 2 回以上プッシュ通知が送信される。
+      </p>
+
+      <h3>対策: _idempotency ドキュメント</h3>
+      <pre><code>// onPostCreate.ts の冪等性ガード
+const eventId = context.eventId;
+const idempotencyRef = db.doc(`_idempotency/onPostCreate_${eventId}`);
+const existing = await idempotencyRef.get();
+if (existing.exists) {
+  functions.logger.warn('[onPostCreate] duplicate event skipped', { postId, eventId });
+  return;  // 重複実行をスキップ
+}
+
+// 処理を続ける...
+await idempotencyRef.set({
+  createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  expireAt: admin.firestore.Timestamp.fromDate(expireAt),  // TTL
+});</code></pre>
+
+      <!-- 7 -->
+      <h2>7. タイムゾーンバグ修正（P1 #3）</h2>
+      <p>
+        天気データの取得で、クライアント（UTC）とサーバー（Open-Meteo が timezone=auto で返すローカル時刻）の
+        時刻フォーマットが異なり、マッチしていなかった。
+      </p>
+
+      <h3>修正前（UTC ベース文字列比較 — バグ）</h3>
+      <pre><code>// toISOString() は UTC を返す
+const postedAtStr = new Date().toISOString();  // "2026-03-19T15:00:00Z"
+// Open-Meteo は timezone=auto で返す：時刻配列は "2026-03-20T00:00" (JST)
+// ↓ マッチしない…</code></pre>
+
+      <h3>修正後（ミリ秒ベース nearest-neighbor）</h3>
+      <pre><code>// onPostProcess.ts
+const timeParsed = time.map((t) => new Date(t).getTime());
+const result = [];
+for (const offset of [-2, -1, 0, 1, 2]) {
+  const targetMs = postedAt.getTime() + offset * 3600 * 1000;
+  // 最も近い時刻のインデックスを探す（30分以内なら一致とみなす）
+  let bestIdx = -1;
+  let bestDiff = Infinity;
+  for (let i = 0; i < timeParsed.length; i++) {
+    const diff = Math.abs(timeParsed[i] - targetMs);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIdx = i;
+    }
+  }
+  if (bestIdx === -1 || bestDiff > 30 * 60 * 1000) continue;
+  result.push({
+    offset_hours: offset,
+    condition: toWeatherCondition(weathercode[bestIdx]),
+    temp_celsius: Math.round(temperature_2m[bestIdx] * 10) / 10,
+  });
+}</code></pre>
+
+      <div class="success-block">
+        ✅ タイムゾーン問題をロバストに解決。JST/UTC ズレを自動吸収
+      </div>
+
+      <!-- 8 -->
+      <h2>8. その他修正（P1 #4）</h2>
+      <p>
+        モック API の fallback ロジックを削除した。
+        本番 Firebase への完全移行を確実にするため。
+      </p>
+
+      <!-- 9 -->
+      <h2>9. _idempotency TTL 設定（P2 #1）</h2>
+      <p>
+        <code>_idempotency</code> ドキュメント（イベント ID ごとのフラグ）が
+        永遠に蓄積されると Firestore ストレージが圧迫される。
+        Firestore の TTL ポリシーを有効化して、7 日後に自動削除する。
+      </p>
+
+      <h3>セットアップ手順</h3>
+      <ol style="list-style: decimal; padding-left: 1.5rem;">
+        <li>Firebase Console → Firestore → <code>_idempotency</code> コレクション</li>
+        <li>TTL ポリシー設定 → <code>expireAt</code> フィールド選択</li>
+        <li>「有効化」</li>
+      </ol>
+
+      <!-- 10 -->
+      <h2>10. 本日の教訓まとめ</h2>
+      <ul>
+        <li><strong>Batch overflow 防止</strong>: Firebase 500 項目制限を避けるため 450 で分割。CLI エラーメッセージを見落とさない</li>
+        <li><strong>Account takeover 防止</strong>: auth_uid 再リンク時に「既に別ユーザーに紐づいているか」を検証</li>
+        <li><strong>Anonymous-only check</strong>: providerData の配列長でチェック。デフォルト拒否の姿勢が重要</li>
+        <li><strong>Internal subcollection の所有権</strong>: get() で親ドキュメントを検証して初めて安全</li>
+        <li><strong>N+1 クエリ削減</strong>: whereField(in:) で 30 件ずつまとめて fetch</li>
+        <li><strong>FCM 冪等性</strong>: eventId + _idempotency ドキュメントで at-least-once を制御</li>
+        <li><strong>タイムゾーン問題</strong>: 文字列ベース比較は危険。ミリ秒基準で nearest-neighbor</li>
+        <li><strong>TTL ポリシー</strong>: 時系列データは自動削除の仕組みを最初から用意すること</li>
+      </ul>
+
+      <h3>セキュリティレビューの効果</h3>
+      <p>
+        帳簿アプリで batch overflow / account takeover のパターンを学んだことで、
+        SoraNiji でも同じリスクを事前に検出できた。
+        <strong>ドメインを超えた知見の応用は、品質向上の最短経路。</strong>
+      </p>
+
+    </div>
+
+    <!-- Prev / Next -->
+    <div class="mt-12 pt-8 border-t border-white/10 flex justify-between items-center">
+      <a href="2026-03-14.html" class="text-blue-300 hover:text-white transition text-sm">← 2026-03-14</a>
+      <a href="../" class="text-blue-300 hover:text-white transition text-sm">記事一覧 →</a>
+    </div>
+
+  </main>
+
+  <footer class="text-center py-10 text-blue-400 text-sm border-t border-white/10 mt-8">
+    <p>SoraNiji 開発ブログ — © 2026 AppDebris Studio</p>
+  </footer>
+
+</body>
+</html>
