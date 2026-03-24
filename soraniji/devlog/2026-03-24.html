@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'none';" />
+  <title>2026-03-24 開発記 | SoraNiji</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; }
+    .sky-gradient { background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%); }
+    .card-glass {
+      background: rgba(255,255,255,0.07);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .rainbow-text {
+      background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #c77dff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .prose h2 { font-size: 1.4rem; font-weight: 700; margin: 2rem 0 0.8rem; border-left: 4px solid #6C8EF5; padding-left: 0.75rem; }
+    .prose h3 { font-size: 1.1rem; font-weight: 700; margin: 1.5rem 0 0.5rem; color: #93c5fd; }
+    .prose p { line-height: 1.85; margin-bottom: 1rem; color: #bfdbfe; }
+    .prose ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+    .prose ul li { line-height: 1.8; color: #bfdbfe; }
+    .prose table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size: 0.9em; }
+    .prose th { background: rgba(108,142,245,0.2); padding: 0.5rem 0.75rem; text-align: left; border: 1px solid rgba(255,255,255,0.1); font-weight: 700; }
+    .prose td { padding: 0.5rem 0.75rem; border: 1px solid rgba(255,255,255,0.1); color: #bfdbfe; }
+  </style>
+</head>
+<body class="sky-gradient min-h-screen text-white">
+
+  <header class="px-6 py-6 border-b border-white/10">
+    <div class="max-w-3xl mx-auto flex items-center justify-between">
+      <a href="../" class="flex items-center gap-2 hover:opacity-80 transition">
+        <span class="text-2xl">🌈</span>
+        <span class="font-bold text-lg"><span class="rainbow-text">SoraNiji</span></span>
+      </a>
+      <nav class="text-sm text-blue-300 flex gap-4">
+        <a href="./" class="hover:text-white transition">記事一覧</a>
+        <a href="../" class="hover:text-white transition">トップ</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-12 prose">
+    <p class="text-xs text-blue-400 mb-2">2026-03-24</p>
+    <h1 class="text-3xl font-black mb-2" style="color:#fff;">認証を全面刷新 — 匿名認証廃止、Sign in with Apple のみに</h1>
+    <div class="flex flex-wrap gap-2 mb-8">
+      <span class="text-xs bg-blue-800/60 px-2 py-0.5 rounded-full">Apple Sign-In</span>
+      <span class="text-xs bg-blue-800/60 px-2 py-0.5 rounded-full">Firebase Auth</span>
+      <span class="text-xs bg-blue-800/60 px-2 py-0.5 rounded-full">Cloud Functions</span>
+      <span class="text-xs bg-blue-800/60 px-2 py-0.5 rounded-full">アカウント削除</span>
+      <span class="text-xs bg-blue-800/60 px-2 py-0.5 rounded-full">App Store</span>
+    </div>
+
+    <p>
+      SoraNiji の認証方式を根本から刷新した。これまでの「匿名認証 + Keychain UUID」方式を全廃止し、
+      <strong style="color:#fff;">Sign in with Apple を唯一の認証方式</strong>にした。
+      同時に App Store Review Guideline 5.1.1(v) で必須のアカウント削除機能も実装。
+      1日で認証基盤と削除パイプラインの両方を完成させた。
+    </p>
+
+    <h2>なぜ匿名認証を廃止したのか</h2>
+
+    <p>
+      匿名認証は「登録不要ですぐ使える」UX を提供していたが、複数の問題があった：
+    </p>
+    <ul>
+      <li><strong style="color:#fff;">Keychain 喪失 = アカウント完全消失</strong> — 端末リセットや機種変更で UUID が失われると、ユーザーの投稿やいいねが孤児化する</li>
+      <li><strong style="color:#fff;">relink_token インフラの複雑さ</strong> — UUID と Firebase UID のマッピングを維持するために relinkAuthUid、initRelinkToken、setUserUuidClaim の3つの Cloud Functions が必要だった</li>
+      <li><strong style="color:#fff;">App Store 審査要件</strong> — アカウント作成機能があるアプリは、アプリ内からアカウント削除を開始できる機能が必須。匿名認証だと「誰のアカウントを削除するか」が曖昧になる</li>
+    </ul>
+
+    <p>
+      Apple Sign-In なら Firebase UID が Apple ID に紐づくため、端末を変えてもアカウントが復元できる。
+      しかも空スコープ（<code style="color:#ffd93d;">requestedScopes: []</code>）でメールも名前も取得しないので、
+      プライバシーファーストの方針は維持できる。
+    </p>
+
+    <h2>Phase 1: 認証基盤の書き換え</h2>
+
+    <h3>AppleSignInCoordinator</h3>
+    <p>
+      ASAuthorizationController を使った Apple Sign-In フローを実装。
+      nonce は <code style="color:#ffd93d;">SecRandomCopyBytes</code> で生成し、SHA-256 でハッシュ化してリクエストに付与。
+      scope は空で、メール・名前・電話番号は一切要求しない。
+    </p>
+
+    <pre style="background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:1rem; overflow-x:auto;"><code style="font-size:0.85em; color:#e2e8f0; font-family:'SF Mono',monospace;">let request = ASAuthorizationAppleIDProvider().createRequest()
+request.requestedScopes = []  // 空スコープ — 個人情報なし
+request.nonce = sha256(nonce)</code></pre>
+
+    <h3>AuthIdentityManager</h3>
+    <p>
+      旧: <code style="color:#ffd93d;">signInAnonymously()</code> → 新: <code style="color:#ffd93d;">signInWithApple()</code>。
+      AppleSignInCoordinator から OAuthCredential を受け取り、<code style="color:#ffd93d;">Auth.auth().signIn(with:)</code> で Firebase Auth にサインイン。
+      <code style="color:#ffd93d;">signOut()</code> も追加。
+    </p>
+
+    <h3>AppState</h3>
+    <p>
+      AuthState に <code style="color:#ffd93d;">.unauthenticated</code> を追加。
+      起動時に <code style="color:#ffd93d;">Auth.auth().currentUser</code> をチェックし、
+      既存セッションがあれば復元、なければサインイン画面へ遷移。
+      UUIDManager / RelinkTokenManager への依存を完全に削除。
+    </p>
+
+    <h3>RootView</h3>
+    <p>
+      サインイン画面を新設。Apple 純正の SignInWithAppleButton を使い、
+      利用規約・プライバシーポリシーへのリンクも配置。
+      旧 authFailed 画面（オフライン時）は削除。
+    </p>
+
+    <h3>UserRepository</h3>
+    <p>
+      ドキュメント ID を Keychain UUID から Firebase UID に変更。
+      relink ロジック（30行超）を全削除し、シンプルな存在チェック + 作成/更新に。
+      <code style="color:#ffd93d;">auth_provider: &quot;apple&quot;</code> を設定。
+    </p>
+
+    <h2>Phase 2: アカウント削除</h2>
+
+    <p>
+      App Store Review Guideline 5.1.1(v) への準拠。削除フローは10ステップ：
+    </p>
+
+    <table>
+      <tr><th>#</th><th>ステップ</th><th>実装場所</th></tr>
+      <tr><td>1</td><td>設定画面から削除操作を開始</td><td>SettingsView</td></tr>
+      <tr><td>2</td><td>最終確認ダイアログ</td><td>confirmationDialog</td></tr>
+      <tr><td>3-4</td><td>Sign in with Apple で再認証</td><td>AppleSignInCoordinator</td></tr>
+      <tr><td>5</td><td>Apple トークン revoke</td><td>deleteAccount.ts</td></tr>
+      <tr><td>6-8</td><td>Firestore + Storage + 関連データ削除</td><td>deleteAccount.ts</td></tr>
+      <tr><td>9</td><td>Firebase Auth ユーザー削除</td><td>AuthIdentityManager</td></tr>
+      <tr><td>10</td><td>ローカルキャッシュ削除 + サインアウト</td><td>AuthIdentityManager</td></tr>
+    </table>
+
+    <h3>Apple トークン Revoke の仕組み</h3>
+    <p>
+      削除時にクライアントが <code style="color:#ffd93d;">authorizationCode</code> を取得し、Cloud Function に送信。
+      サーバー側で Apple の <code style="color:#ffd93d;">auth/token</code> エンドポイントで refresh_token に交換し、
+      <code style="color:#ffd93d;">auth/revoke</code> で失効させる。
+      これにより Apple 側でもユーザーのトークンが無効化される。
+    </p>
+
+    <pre style="background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:1rem; overflow-x:auto;"><code style="font-size:0.85em; color:#e2e8f0; font-family:'SF Mono',monospace;">// Cloud Function: Apple token revocation
+const tokenRes = await fetch(&quot;https://appleid.apple.com/auth/token&quot;, {
+  method: &quot;POST&quot;,
+  body: new URLSearchParams({
+    client_id: APPLE_CLIENT_ID,
+    client_secret: clientSecret,  // JWT signed with .p8 key
+    code: authorizationCode,
+    grant_type: &quot;authorization_code&quot;,
+  }),
+});
+const { refresh_token } = await tokenRes.json();
+
+await fetch(&quot;https://appleid.apple.com/auth/revoke&quot;, {
+  method: &quot;POST&quot;,
+  body: new URLSearchParams({
+    client_id: APPLE_CLIENT_ID,
+    client_secret: clientSecret,
+    token: refresh_token,
+    token_type_hint: &quot;refresh_token&quot;,
+  }),
+});</code></pre>
+
+    <h2>廃止したもの</h2>
+    <ul>
+      <li><code style="color:#ffd93d;">signInAnonymously()</code> — Firebase 匿名認証</li>
+      <li><code style="color:#ffd93d;">UUIDManager</code> — Keychain UUID 生成・永続化</li>
+      <li><code style="color:#ffd93d;">RelinkTokenManager</code> — relink_token の Keychain 管理</li>
+      <li><code style="color:#ffd93d;">relinkAuthUid</code> Cloud Function — UUID-UID 再リンク</li>
+      <li><code style="color:#ffd93d;">initRelinkToken</code> Cloud Function — トークン初期化</li>
+      <li><code style="color:#ffd93d;">setUserUuidClaim</code> Cloud Function — カスタムクレーム設定</li>
+    </ul>
+    <p>
+      3つの Cloud Functions と2つの Keychain マネージャーが不要に。
+      認証コードの総行数は大幅に削減され、保守性が向上した。
+    </p>
+
+    <h2>本日の教訓</h2>
+    <ul>
+      <li><strong style="color:#fff;">シンプルさは正義</strong> — 匿名認証の「手軽さ」は relink_token 等の複雑なインフラで支えられていた。Apple Sign-In のみにすることで、認証レイヤー全体が劇的にシンプルに</li>
+      <li><strong style="color:#fff;">空スコープでプライバシー維持</strong> — <code style="color:#ffd93d;">requestedScopes: []</code> で個人情報を一切取得しない。Apple Sign-In = 個人情報収集ではない</li>
+      <li><strong style="color:#fff;">削除は設計初期に</strong> — App Store Guideline 5.1.1(v) のアカウント削除要件は後付けだと大変。認証方式の刷新と同時に実装するのが正解</li>
+      <li><strong style="color:#fff;">Apple token revoke は authorizationCode が鍵</strong> — クライアントから authorizationCode を取得し、サーバー側で refresh_token に交換→revoke する2段階が必要</li>
+    </ul>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center mt-12 pt-6 border-t border-white/10">
+      <a href="2026-03-19.html" class="text-blue-300 hover:text-white transition text-sm">← 前の記事</a>
+      <a href="./" class="text-blue-300 hover:text-white transition text-sm">記事一覧</a>
+      <span class="text-blue-600 text-sm">最新</span>
+    </div>
+  </main>
+
+  <footer class="text-center py-10 text-blue-400 text-sm border-t border-white/10 mt-8">
+    <p>SoraNiji 開発ブログ — &copy; 2026 AppDebris Studio</p>
+  </footer>
+
+</body>
+</html>
