@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'none';" />
+  <title>2026-03-28 開発記 | SoraNiji</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; }
+    .sky-gradient { background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%); }
+    .card-glass {
+      background: rgba(255,255,255,0.07);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .rainbow-text {
+      background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #c77dff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .prose h2 { font-size: 1.4rem; font-weight: 700; margin: 2rem 0 0.8rem; border-left: 4px solid #6C8EF5; padding-left: 0.75rem; }
+    .prose h3 { font-size: 1.1rem; font-weight: 700; margin: 1.5rem 0 0.5rem; color: #93c5fd; }
+    .prose p { line-height: 1.85; margin-bottom: 1rem; color: #bfdbfe; }
+    .prose ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+    .prose ul li { line-height: 1.8; color: #bfdbfe; }
+    .prose table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size: 0.9em; }
+    .prose th { background: rgba(108,142,245,0.2); padding: 0.5rem 0.75rem; text-align: left; border: 1px solid rgba(255,255,255,0.1); font-weight: 700; }
+    .prose td { padding: 0.5rem 0.75rem; border: 1px solid rgba(255,255,255,0.1); color: #bfdbfe; }
+    .code-block {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 1rem;
+      overflow-x: auto;
+      margin: 1rem 0 1.5rem;
+    }
+    .code-block code {
+      font-size: 0.85em;
+      color: #e2e8f0;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      white-space: pre;
+    }
+  </style>
+</head>
+<body class="sky-gradient min-h-screen text-white">
+
+  <header class="px-6 py-6 border-b border-white/10">
+    <div class="max-w-3xl mx-auto flex items-center justify-between">
+      <a href="../" class="flex items-center gap-2 hover:opacity-80 transition">
+        <span class="text-2xl">🌈</span>
+        <span class="font-bold text-lg"><span class="rainbow-text">SoraNiji</span></span>
+      </a>
+      <nav class="text-sm text-blue-300">
+        <a href="./" class="hover:text-white transition">← 開発ブログ一覧</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-12">
+
+    <!-- ヘッダー -->
+    <div class="mb-10">
+      <p class="text-xs text-blue-400 mb-2">2026-03-28</p>
+      <h1 class="text-3xl font-black mb-4 leading-tight">
+        AIと一緒に成長する仕組みを作った<br>
+        <span class="text-xl font-bold text-blue-300">— Claude Code フックで実現するプロンプトロガー</span>
+      </h1>
+      <div class="flex flex-wrap gap-2 mb-6">
+        <span class="text-xs bg-blue-800/60 px-2 py-0.5 rounded-full">Claude Code</span>
+        <span class="text-xs bg-blue-800/60 px-2 py-0.5 rounded-full">AI開発</span>
+        <span class="text-xs bg-blue-800/60 px-2 py-0.5 rounded-full">フック</span>
+        <span class="text-xs bg-blue-800/60 px-2 py-0.5 rounded-full">シェルスクリプト</span>
+        <span class="text-xs bg-blue-800/60 px-2 py-0.5 rounded-full">セキュリティ</span>
+      </div>
+      <p class="text-blue-200 leading-relaxed">
+        「AIは会話内容を蓄積していない」という事実から出発し、
+        プロンプトを自動記録・分析してAIとの協働を深化させる仕組みを設計・実装した。
+        トークンコストゼロ、セキュリティ考慮済み、複数AIエージェント対応。
+      </p>
+    </div>
+
+    <div class="prose">
+
+      <h2>1. 発端 — 「お互いの成長」という問い</h2>
+      <p>
+        Claude Code を日常的に使っていて、ふと気になった。
+        <strong style="color:#fff">「AIは私が書いたプロンプトを蓄積していますか？」</strong>
+      </p>
+      <p>
+        答えはノー。各会話セッションは独立しており、終わると内容は消える。
+        メモリシステムはあるが、それは私が明示的に「記録して」と指示した情報だけだ。
+      </p>
+      <p>
+        ここで思った。<em style="color:#93c5fd">機密情報以外のプロンプトをスキルで蓄積すれば、
+        お互いの成長に使えるのではないか？</em>
+        ユーザーのプロンプト傾向を学習することで、確認の往復が減り、
+        初回から意図を正確に把握できるようになる。
+      </p>
+
+      <h2>2. 設計の検討 — 何を使えば実現できるか</h2>
+      <p>
+        Claude Code にはフック機能がある。特定のイベントに反応してシェルコマンドを実行できる。
+        これを活用すれば、プロンプト送信のたびに自動でログを記録できる。
+      </p>
+
+      <h3>時系列での処理フロー</h3>
+      <div class="code-block">
+        <code>セッション開始
+  └─► SessionStart フック発火（async）
+          └─► モデル名を ~/.claude/current-model.txt に保存
+
+ユーザーがプロンプト送信
+  └─► UserPromptSubmit フック発火（async）
+          └─► prompt-logger.sh 実行
+                  ├─► prompt-filter.sh で機密情報を [REDACTED] に置換
+                  ├─► フィルター済みが空 → スキップ
+                  ├─► current-model.txt からモデル名を取得
+                  └─► prompt-log.jsonl に追記</code>
+      </div>
+
+      <p>
+        <code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">async: true</code>
+        を設定することで、フックの完了を待たずにClaudeが応答を返す。
+        会話の遅延はゼロ。
+      </p>
+
+      <h3>なぜ SessionStart でモデルを記録するか</h3>
+      <p>
+        UserPromptSubmit フックのJSON入力には <code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">model</code> フィールドが含まれない。
+        プロンプト送信時点ではまだモデルが確定していないためだ。
+        そこで SessionStart フック（セッション開始時に発火）でモデル名を一時ファイルに保存し、
+        ロガーがそれを読み取る設計にした。
+      </p>
+
+      <h2>3. セキュリティ設計 — 部分置換という選択</h2>
+      <p>
+        ログ記録において最初に考えるべきはセキュリティだ。
+        プロンプトには機密情報が混入することがある。
+      </p>
+      <p>
+        ここで重要な設計判断があった。
+        <strong style="color:#fff">「機密箇所を含むプロンプト全体を削除する」のか、
+        「機密箇所だけを置換して残りを保持する」のか。</strong>
+      </p>
+      <p>
+        全削除は安全だが、プロンプトの傾向分析には使えない。
+        部分置換（<code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">[REDACTED]</code>）なら文脈を保ちつつ機密を除去できる。
+        分析価値を最大化するために部分置換を選んだ。
+      </p>
+
+      <h3>検出対象パターン（BSD sed + 正規表現）</h3>
+      <div class="prose">
+        <table>
+          <tr><th>カテゴリ</th><th>例</th></tr>
+          <tr><td>APIキー・トークン</td><td>sk-xxx, ghp_xxx, Bearer xxx, 32文字以上の英数字</td></tr>
+          <tr><td>メールアドレス</td><td>xxx@xxx.xxx</td></tr>
+          <tr><td>電話番号</td><td>090-xxxx-xxxx, +81xx</td></tr>
+          <tr><td>クレジットカード</td><td>1234-5678-9012-3456</td></tr>
+          <tr><td>マイナンバー</td><td>12桁の数字</td></tr>
+          <tr><td>パスワード記述</td><td>password: xxx, パスワード：xxx</td></tr>
+          <tr><td>秘密鍵ブロック</td><td>-----BEGIN PRIVATE KEY-----</td></tr>
+        </table>
+      </div>
+      <p>
+        自然文中の人名・住所は正規表現では検出できないため、スコープ外とした。
+        完璧なフィルタリングより、コストゼロで動く実用的な仕組みを優先した。
+      </p>
+
+      <h2>4. ログ形式 — 分析に必要な情報だけを記録</h2>
+      <p>1行1JSONの形式（JSONL）で記録する:</p>
+      <div class="code-block">
+        <code>{"date":"2026-03-28T14:07:03Z","model":"claude-sonnet-4-6","cwd":"/path/to/project","prompt":"..."}</code>
+      </div>
+
+      <p>
+        <code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">date</code>（時間帯・頻度分析）、
+        <code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">model</code>（どのAIが使われたか）、
+        <code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">cwd</code>（プロジェクト別分布）、
+        <code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">prompt</code>（傾向分析の本体）。
+        この4フィールドで分析に必要な情報は揃う。
+      </p>
+
+      <h2>5. 運用ルール — 肥大化しない設計</h2>
+      <p>
+        ログファイルは放置すると肥大化する。
+        10,000行を超えたら先頭1,000行を自動削除し、9,000行から再蓄積する仕組みを
+        <code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">prompt-logger.sh</code> に組み込んだ。
+      </p>
+      <div class="code-block">
+        <code>lines=$(wc -l &lt; "$LOG")
+if [ "$lines" -gt 10000 ]; then
+  tail -n +1001 "$LOG" &gt; "${LOG}.tmp" &amp;&amp; mv "${LOG}.tmp" "$LOG"
+fi</code>
+      </div>
+
+      <p>
+        また、ログファイルのパーミッションは <code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">chmod 600</code>（自分のみ読み書き可）、
+        スクリプトは <code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">chmod 700</code> に設定した。
+      </p>
+      <p>
+        保存先はグローバルではなく
+        <code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">~/dev/shared/agent-skills/ai/prompt-log.jsonl</code> とした。
+        複数のAIエージェントが共有リソースとして参照できる場所だ。
+      </p>
+
+      <h2>6. 分析スキル（prompt-analyzer）との連携</h2>
+      <p>
+        ログを蓄積するだけでは意味がない。分析して活用する仕組みが必要だ。
+      </p>
+      <p>
+        そこで <strong style="color:#fff">prompt-analyzer</strong> スキルを作成した。
+        secretary の「整理」コマンドから自動で呼び出され、以下を実行する:
+      </p>
+
+      <h3>フェーズ1（トークンコストゼロ）</h3>
+      <ul>
+        <li>時間帯分析 — いつ最も活動しているか</li>
+        <li>プロジェクト別分布 — どのプロジェクトで多く使っているか</li>
+        <li>頻出語TOP20 — どんな言葉をよく使うか</li>
+        <li>文体特徴 — 承認・疑問・命令の比率</li>
+      </ul>
+
+      <h3>フェーズ2（LLM処理・確認後実行）</h3>
+      <ul>
+        <li>意図分類 — 質問/依頼/確認/承認/提案の比率</li>
+        <li>フィードバックパターン — 中断・修正依頼・肯定の頻度</li>
+      </ul>
+
+      <p>
+        分析結果は <code style="background:rgba(255,255,255,0.1); padding:0.1em 0.4em; border-radius:4px;">user_profile.md</code> に自動反映される。
+        データが50件以上蓄積されたら分析が走り、50件未満はスキップされる。
+      </p>
+
+      <h2>今日の教訓</h2>
+      <ul>
+        <li><strong style="color:#fff">フックコマンドはシェルスクリプトに切り出す</strong> — settings.json内のクォートネストを避けることで実装の安定性が大幅に上がる</li>
+        <li><strong style="color:#fff">コストゼロから設計する</strong> — フェーズ1をshell+jqのみにすることで、日常的に実行できる仕組みになる</li>
+        <li><strong style="color:#fff">セキュリティは設計の最初に</strong> — フィルタリングルールは後付けではなく、仕組みの中心に置く</li>
+        <li><strong style="color:#fff">スキルは共有リソースとして設計する</strong> — 将来の別AIエージェントも同じログを読める場所に置くことで拡張性が生まれる</li>
+      </ul>
+
+    </div>
+
+    <!-- ナビゲーション -->
+    <div class="flex justify-between mt-16 pt-8 border-t border-white/10 text-sm">
+      <a href="2026-03-24.html" class="text-blue-400 hover:text-white transition">← 前の記事</a>
+      <a href="./" class="text-blue-400 hover:text-white transition">一覧へ</a>
+    </div>
+
+  </main>
+
+  <footer class="text-center py-10 text-blue-400 text-sm border-t border-white/10 mt-8">
+    <p>SoraNiji 開発ブログ — © 2026 AppDebris Studio</p>
+  </footer>
+
+</body>
+</html>
